@@ -1,0 +1,52 @@
+name: Test Code and Scan Container Image
+on:
+  push:
+    branches: ['main']
+jobs:
+  test:
+    name: Test code
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: 3.11
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Run Unit Tests
+        run: |
+          cd src
+          python -m unittest tests.py
+
+  scan-container-image:
+    name: Scan Container Image
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Build an image from Dockerfile
+        run: docker build -t scoreboard:${{ github.sha }} .
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: scoreboard:${{ github.sha }}
+          format: sarif
+          output: trivy-results.sarif
+          ignore-unfixed: false
+          vuln-type: 'os,library'
+          severity: 'CRITICAL'
+
+      - name: Upload Trivy scan results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v2
+        with:
+          sarif_file: trivy-results.sarif
+          category: code
